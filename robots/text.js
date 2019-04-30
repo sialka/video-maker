@@ -1,10 +1,11 @@
 const algorithmia = require('algorithmia')
 const algorithmiaApiKey = require('../credentials/algorithmia.json').apiKey
+const sentenceBoundaryDetection = require('sbd')
 
-function robot(content){
-	fethContentFromWiki(content)
-	// sanitizeContent(content)
-	// breakContentIntoSentences(content)	
+async function robot(content){
+	await fethContentFromWikipedia(content)
+	sanitizeContent(content)
+	breakContentIntoSentences(content)	
 
 	/*
 	 1. authentication
@@ -12,18 +13,53 @@ function robot(content){
 	 3. execute
 	 4. capture value
 	*/
-	function fethContentFromWiki(content){
+	async function fethContentFromWikipedia(content){		
 		const algorithmiaAuthenticated = algorithmia(algorithmiaApiKey)
 		const wikipediaAlgorithm = algorithmiaAuthenticated.algo('web/WikipediaParser/0.1.2')
-		const wikipediaResponse = wikipediaAlgorithm.pipe(content.searchTerm)
+		const wikipediaResponse = await wikipediaAlgorithm.pipe(content.searchTerm)
 		const wikipediaContent = wikipediaResponse.get()
-
-		console.log(wikipediaContent)
+		
+		content.sourceContentOriginal = wikipediaContent.content
 
 	}
 	
-	// function sanitizeContent(content){}
-	// function breakContentIntoSentences(content){}
+	function sanitizeContent(content){
+		const withoutBlankLinesAndMarksdown = removeBlankLinesAndMarksdown(content.sourceContentOriginal)
+		const withoutDatesInParentheses = removeDatesInParentheses(withoutBlankLinesAndMarksdown)
+		
+		content.sourceContentSanitized = withoutDatesInParentheses
+
+		function removeBlankLinesAndMarksdown(text){
+			const allLines = text.split('\n')
+
+			const withoutBlankLinesAndMarksdown = allLines.filter((line)=>{
+				if (line.trim().length === 0 || line.trim().startsWith('=')) {
+					return false
+				}
+
+				return true
+			})
+			return withoutBlankLinesAndMarksdown.join(' ')
+		}
+	}
+
+	function removeDatesInParentheses(text){
+		return text.replace(/\((?:\([^()]*\)|[^()])*\)/gm, '').replace(/  /g,' ')
+	}
+	
+	function breakContentIntoSentences(content){
+		content.sentences = []
+
+		const sentences = sentenceBoundaryDetection.sentences(content.sourceContentSanitized)
+		sentences.forEach((sentence) => {
+			content.sentences.push({
+				text: sentence,
+				keywords: [],
+				images: []
+			})
+		})
+
+	}	
 }
 
 module.exports = robot
